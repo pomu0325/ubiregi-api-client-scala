@@ -9,8 +9,8 @@ import com.ubiregi.api._
  */
 object UbiregiClientExample {
   def main(args: Array[String]): Unit = {
-    val Array(endpoint, secret, apiToken) = args
-    val client = UbiregiClient[Id](endpoint, secret, apiToken)
+    val Array(endpoint, clientId, secret, accessToken, refreshToken) = args
+    val client = UbiregiClient[Id](endpoint, clientId, secret, accessToken, refreshToken)
     val json =  client.jsonGet("""accounts/current""")
     println(json)
   }

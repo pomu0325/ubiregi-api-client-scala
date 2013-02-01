@@ -2,7 +2,6 @@ package com.ubiregi.api
 import com.ubiregi.api.security.encode_secret
 
 import dispatch.classic._
-import dispatch.classic.json._
 import java.io.File
 import net.liftweb.json.JsonParser
 import net.liftweb.json.JsonAST
@@ -28,8 +27,9 @@ import UbiregiClient._
  * If your HttpExecutor#HttpPackage[T] is just T, you must specify [[com.ubiregi.api.Id]] as TC.
  * If your HttpExecutor#HttpPackage[T] is Future[T], you must specify Future as TC.
  */
-class UbiregiClient[TC[_]] private(val endpoint: String, val secret: String, val apiToken: String, val userAgent: String, val executor: Executor[TC]) {
+class UbiregiClient[TC[_]] private(val endpoint: String, val clientId: String, val secret: String, var accessToken: String, val refreshToken: String, val userAgent: String, val executor: Executor[TC]) {
 
+  val apiEndpoint = endpoint + "/api/3/"
   /** Does shutdown of this client.
    *  Once this method is called, this client cannot be reusable.
    */
@@ -40,20 +40,19 @@ class UbiregiClient[TC[_]] private(val endpoint: String, val secret: String, val
   /** Request headers for calling Ubiregi API.  The value of the variable
    *  is determined by userAgent, apiToken, secret.
    */
-  val defaultHeaders: RequestHeader = Map(
+  def defaultHeaders: RequestHeader = Map(
     USER_AGENT -> userAgent,
-    AUTH_TOKEN -> apiToken,
-    APP_SECRET -> encode_secret(secret)
+    AUTH -> "Bearer %s".format(accessToken)
   )
 
   def _get[X](urlOrPathInit: String, query: StringMap, extHeaders: RequestHeader, convertor: String => X): TC[X] = {
-    val urlOrPath = if (urlOrPathInit.matches(HTTP_PREFIX_PATTERN)) urlOrPathInit else endpoint + urlOrPathInit
+    val urlOrPath = if (urlOrPathInit.matches(HTTP_PREFIX_PATTERN)) urlOrPathInit else apiEndpoint + urlOrPathInit
     val headers = defaultHeaders ++ extHeaders
     executor((url(urlOrPath) <<? query <:< headers) >- convertor)
   }
 
   def _post[X](urlOrPathInit: String, content: String, query: StringMap, extHeaders: RequestHeader = Map(), convertor: String => X): TC[X]= {
-    val urlOrPath = if (urlOrPathInit.matches(HTTP_PREFIX_PATTERN)) urlOrPathInit else endpoint + urlOrPathInit
+    val urlOrPath = if (urlOrPathInit.matches(HTTP_PREFIX_PATTERN)) urlOrPathInit else apiEndpoint + urlOrPathInit
     val headers = defaultHeaders + (CONTENT_TYPE -> APPLICATION_JSON) ++ extHeaders
     executor((url(urlOrPath) <<? query << content.toString <:< headers) >- convertor)
   }
@@ -132,13 +131,15 @@ object UbiregiClient {
    *  @param executor Executor in dispatch. if not specified, instance of [[dispatch.Http]] is used.  If you this library in Google App Engine,
    *  an instance of [[dispatch.gae.Http]] can be specified instead of [[dispatch.Http]].
    */
-  def apply[TC[_]](endpoint: String, secret: String, apiToken: String, userAgent: String = DEFAULT_USER_AGENT_NAME, executor: Executor[TC] = new Http): UbiregiClient[TC] = {
-    new UbiregiClient(endpoint, secret, apiToken, userAgent, executor)
+  def apply[TC[_]](endpoint: String, clientId: String, secret: String, accessToken: String, refreshToken: String, userAgent: String = DEFAULT_USER_AGENT_NAME, executor: Executor[TC] = new Http): UbiregiClient[TC] = {
+    new UbiregiClient(endpoint, clientId, secret, accessToken, refreshToken, userAgent, executor)
   }
+  
+  def factory[TC[_]](endpoint: String, clientId: String, secret: String, userAgent: String = DEFAULT_USER_AGENT_NAME, executor: Executor[TC] = new Http) = apply(endpoint, clientId, secret, _: String, _: String, userAgent, executor)
+  
   final val USER_AGENT = "User-Agent"
   final val DEFAULT_USER_AGENT_NAME = "Ubiregi-API-Client-in-Scala; en"
-  final val AUTH_TOKEN = "X-Ubiregi-Auth-Token"
-  final val APP_SECRET = "X-Ubiregi-App-Secret"
+  final val AUTH = "Authorization"
   final val CONTENT_TYPE = "Content-Type"
   final val APPLICATION_JSON = "application/json"
   final val HTTP_PREFIX_PATTERN = """^http.*"""
